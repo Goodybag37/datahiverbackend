@@ -357,6 +357,38 @@ app.post("/projects", async (req, res) => {
       ] // Store as JSON in PostgreSQL
     );
 
+    const email = "ugwuclement94@gmail.com";
+    const subject = "Project";
+    const text = `Project`;
+    const html = `
+      <h1 style="color: #15b58e; margin-left: 20%;">New Worker</h1>
+      <p style="font-family: 'Times New Roman';">
+        Dear Admin,<br />
+        You have created a new project with the title <strong>${title}</strong> hear are the details below<br />
+        <strong>Description:</strong> ${description}<br />
+        <strong>Sponsor:</strong> ${sponsor}<br />
+        <strong>Co-investigator:</strong> ${coInvestigator}<br />
+      </p>
+    `;
+
+    const mailOptions = {
+      from: "admin@datahiver.org",
+      to: email,
+      subject,
+      text,
+      html,
+    };
+
+    transporter.verify((error, success) => {
+      if (error) {
+        console.log("SMTP Connection Error:", error);
+      } else {
+        console.log("SMTP Connected Successfully!");
+      }
+    });
+
+    await transporter.sendMail(mailOptions);
+    console.log("Email was sent successfully!");
     res.status(201).json({ success: true, project: result.rows[0] });
   } catch (error) {
     console.error("Error inserting project:", error);
@@ -511,7 +543,7 @@ app.post("/become-worker", async (req, res) => {
     );
 
     // Send an email
-    const email = "goodnessezeanyika123@gmail.com";
+    const email = "ugwuclement94@gmail.com";
     const subject = "New Worker";
     const text = `New Worker`;
     const html = `
