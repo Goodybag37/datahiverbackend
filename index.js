@@ -63,7 +63,7 @@ app.use(
   cors({
     origin: [
       "http://localhost:3000", // Your frontend domain
-      "http://datahiver.org",
+      "https://datahiver.org",
     ],
     methods: ["GET", "POST", "PUT", "OPTIONS"], // Specify allowed methods
     allowedHeaders: ["Content-Type", "Authorization"], // Specify allowed headers
@@ -73,7 +73,7 @@ app.use(
 app.use(
   "/api", // Adjust this path based on your needs
   createProxyMiddleware({
-    target: "https://datahiver-production.up.railway.app", // Replace with the actual port of your React development server
+    target: "https://datahiver.org", // Replace with the actual port of your React development server
     changeOrigin: true,
   })
 );
