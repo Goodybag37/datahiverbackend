@@ -290,7 +290,7 @@ app.post("/register", async (req, res) => {
       ]
     );
 
-    return res.status(201).json({
+    res.status(201).json({
       message: "Registration successful!",
       userId: newUser.rows[0].id,
     });
@@ -396,11 +396,39 @@ app.post("/projects", async (req, res) => {
   }
 });
 
+// app.get("/projects", async (req, res) => {
+//   console.log("we get projects");
+//   try {
+//     const query = `
+//       SELECT project_id, title, num_workers,
+//              TO_CHAR(created_at, 'YYYY-MM-DD') AS created_at
+//       FROM projects
+//       ORDER BY created_at DESC;
+//     `;
+//     const { rows } = await pool.query(query);
+//     res.json(rows);
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Internal Server Error" });
+//   }
+// });
+
 app.get("/projects", async (req, res) => {
   console.log("we get projects");
   try {
-    const query =
-      "SELECT project_id, title, num_workers FROM projects ORDER BY project_id DESC;";
+    const query = `
+      SELECT 
+        p.project_id, 
+        p.title, 
+        p.num_workers, 
+        TO_CHAR(p.created_at, 'YYYY-MM-DD') AS created_at, -- Remove time
+        COUNT(r.project_id) AS response_count -- Count responses per project
+      FROM projects p
+      LEFT JOIN responses r ON p.project_id = r.project_id
+      GROUP BY p.project_id, p.title, p.num_workers, p.created_at
+      ORDER BY p.created_at DESC;
+    `;
+
     const { rows } = await pool.query(query);
     res.json(rows);
   } catch (err) {
@@ -580,6 +608,27 @@ app.post("/become-worker", async (req, res) => {
   } catch (error) {
     console.error("Error in /become-worker:", error);
     return res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.post("/delete-project", async (req, res) => {
+  console.log("we get reply");
+  const { projectId } = req.body;
+  try {
+    await pool.query("DELETE FROM workers WHERE project_id = $1", [projectId]);
+    await pool.query("DELETE FROM responses WHERE project_id = $1", [
+      projectId,
+    ]);
+    await pool.query("DELETE FROM answers WHERE project_id = $1", [projectId]);
+    await pool.query("DELETE FROM questions WHERE project_id = $1", [
+      projectId,
+    ]);
+    await pool.query("DELETE FROM projects WHERE project_id = $1", [projectId]);
+
+    console.log("i don delete all ", projectId);
+    res.status(200).json({ message: "Project deleted successfully" });
+  } catch (error) {
+    console.log(error);
   }
 });
 
