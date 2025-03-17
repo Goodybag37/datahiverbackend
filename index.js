@@ -60,7 +60,11 @@ app.use(cors());
 app.use(express.json()); // This is required to parse JSON requests
 
 app.get("/", (req, res) => {
-  res.send("Backend is working!");
+  if (!req.headers.accept || req.headers.accept.includes("text/html")) {
+    res.redirect("https://www.datahiver.org");
+  } else {
+    res.status(404).json({ error: "Not Found" });
+  }
 });
 
 app.use(
