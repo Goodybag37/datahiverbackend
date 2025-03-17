@@ -59,27 +59,8 @@ app.use(cors());
 
 app.use(express.json()); // This is required to parse JSON requests
 
-// Serve frontend build if no API route matches
-const __dirname = path.resolve(); // Ensure correct dirname handling
-app.use(
-  express.static(path.join(__dirname, "../client/react-dashboard/build"))
-);
-
-app.get("*", (req, res) => {
-  res.sendFile(
-    path.join(__dirname, "../client/react-dashboard/build", "index.html")
-  );
-});
-
-app.get("/", function (req, res) {
-  res.sendFile(
-    path.join(__dirname, "../client/react-dashboard/build", "index.html"),
-    function (err) {
-      if (err) {
-        res.status(500).send(err);
-      }
-    }
-  );
+app.get("/", (req, res) => {
+  res.send("Backend is working!");
 });
 
 app.use(
