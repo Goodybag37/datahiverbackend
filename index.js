@@ -64,17 +64,10 @@ app.use(
     origin: [
       "http://localhost:3000", // Your frontend domain
       "https://datahiver.org",
+      "https://www.datahiver.org",
     ],
     methods: ["GET", "POST", "PUT", "OPTIONS"], // Specify allowed methods
     allowedHeaders: ["Content-Type", "Authorization"], // Specify allowed headers
-  })
-);
-
-app.use(
-  "/api", // Adjust this path based on your needs
-  createProxyMiddleware({
-    target: "https://datahiver.org", // Replace with the actual port of your React development server
-    changeOrigin: true,
   })
 );
 
