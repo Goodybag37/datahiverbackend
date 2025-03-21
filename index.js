@@ -73,6 +73,8 @@ app.use(
       "http://localhost:3000", // Your frontend domain
       "https://datahiver.org",
       "https://www.datahiver.org",
+      "www.datahiver.org",
+      "https://datahiverbackend-production.up.railway.app",
     ],
     methods: ["GET", "POST", "PUT", "OPTIONS"], // Specify allowed methods
     allowedHeaders: ["Content-Type", "Authorization"], // Specify allowed headers
@@ -103,7 +105,7 @@ let transporter = nodemailer.createTransport({
   },
 });
 
-const port = process.env.PORT || 5000;
+const port = process.env.PORT || 8080;
 const saltRounds = 10;
 
 app.use(passport.initialize());
@@ -428,6 +430,29 @@ app.get("/projects", async (req, res) => {
       LEFT JOIN responses r ON p.project_id = r.project_id
       GROUP BY p.project_id, p.title, p.num_workers, p.created_at
       ORDER BY p.created_at DESC;
+    `;
+
+    const { rows } = await pool.query(query);
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.get("/workers", async (req, res) => {
+  console.log("we get workers");
+  try {
+    const query = `
+      SELECT 
+        w.full_name, 
+        w.project_title, 
+        w.role, 
+        TO_CHAR(w.created_at, 'YYYY-MM-DD') AS created_at -- ❌ Removed extra comma here
+      FROM workers w
+      LEFT JOIN users u ON w.user_id = u.id -- Fixed JOIN condition
+      GROUP BY w.full_name, w.project_title, w.role, w.created_at -- Fixed GROUP BY
+      ORDER BY w.created_at DESC;
     `;
 
     const { rows } = await pool.query(query);
