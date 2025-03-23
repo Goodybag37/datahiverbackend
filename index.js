@@ -141,7 +141,6 @@ passport.use(
 );
 
 passport.serializeUser((user, done) => {
-  console.log("Serializing user:", user);
   // Ensure user.id is non-null and unique
   done(null, user.id || "0");
 });
@@ -184,14 +183,12 @@ app.post("/log", async (req, res, next) => {
       [email]
     );
     const foundMail = result.rows[0];
-    console.log("Query result:", foundMail); // Debugging query result
 
     if (foundMail) {
       const hashedPassword = foundMail.password;
 
       // Compare the input password with the stored hashed password
       const passwordMatch = await bcrypt.compare(password, hashedPassword);
-      console.log("Password match:", passwordMatch); // Debug password match
 
       if (passwordMatch) {
         passport.authenticate("local", (err, user, info) => {
@@ -200,7 +197,6 @@ app.post("/log", async (req, res, next) => {
             return next(err);
           }
           if (!user) {
-            console.log("Authentication failed: No user");
             return res.status(401).json({ message: "Authentication failed" });
           }
 
@@ -219,11 +215,9 @@ app.post("/log", async (req, res, next) => {
           });
         })(req, res, next);
       } else {
-        console.log("Incorrect password");
         return res.status(401).json({ message: "Incorrect password" });
       }
     } else {
-      console.log("No user found with the given email");
       return res
         .status(404)
         .json({ message: "No matching email. Please create an account." });
@@ -235,10 +229,7 @@ app.post("/log", async (req, res, next) => {
 });
 
 app.post("/register", async (req, res) => {
-  console.log("something come here ");
   const { user_id, firstName, lastName, email, password, location } = req.body;
-
-  console.log(`Received email: ${req.body}`);
 
   // const userId = parseInt(user_id, 10);
 
@@ -305,7 +296,6 @@ app.post("/register", async (req, res) => {
 
 app.get("/profile", async (req, res) => {
   const { userId } = req.query;
-  console.log("profile userId:", userId); // Check if userId is received
 
   try {
     // Await the query to get the actual data
@@ -320,7 +310,6 @@ app.get("/profile", async (req, res) => {
     }
 
     res.json(result.rows[0]); // Send the first row (user profile)
-    console.log("profile data:", result.rows[0]); // Log the actual data
   } catch (error) {
     console.error("Database query error:", error);
     res.status(500).json({ error: "Internal Server Error" });
@@ -330,7 +319,6 @@ app.get("/profile", async (req, res) => {
 app.post("/projects", async (req, res) => {
   try {
     const { title, description, sponsor, coInvestigator, sections } = req.body;
-    console.log("Received data:", req.body);
 
     // Ensure `questions` is an array (parse if it's a string)
     const parsedQuestions =
@@ -391,7 +379,7 @@ app.post("/projects", async (req, res) => {
     });
 
     await transporter.sendMail(mailOptions);
-    console.log("Email was sent successfully!");
+
     res.status(201).json({ success: true, project: result.rows[0] });
   } catch (error) {
     console.error("Error inserting project:", error);
@@ -399,36 +387,19 @@ app.post("/projects", async (req, res) => {
   }
 });
 
-// app.get("/projects", async (req, res) => {
-//   console.log("we get projects");
-//   try {
-//     const query = `
-//       SELECT project_id, title, num_workers,
-//              TO_CHAR(created_at, 'YYYY-MM-DD') AS created_at
-//       FROM projects
-//       ORDER BY created_at DESC;
-//     `;
-//     const { rows } = await pool.query(query);
-//     res.json(rows);
-//   } catch (err) {
-//     console.error(err);
-//     res.status(500).json({ error: "Internal Server Error" });
-//   }
-// });
-
 app.get("/projects", async (req, res) => {
-  console.log("we get projects");
   try {
     const query = `
       SELECT 
         p.project_id, 
         p.title, 
         p.num_workers, 
+        p.total_responses,
         TO_CHAR(p.created_at, 'YYYY-MM-DD') AS created_at, -- Remove time
         COUNT(r.project_id) AS response_count -- Count responses per project
       FROM projects p
       LEFT JOIN responses r ON p.project_id = r.project_id
-      GROUP BY p.project_id, p.title, p.num_workers, p.created_at
+      GROUP BY p.project_id, p.title, p.num_workers, p.total_responses, p.created_at
       ORDER BY p.created_at DESC;
     `;
 
@@ -441,21 +412,22 @@ app.get("/projects", async (req, res) => {
 });
 
 app.get("/workers", async (req, res) => {
-  console.log("we get workers");
   try {
     const query = `
       SELECT 
         w.full_name, 
         w.project_title, 
         w.role, 
-        TO_CHAR(w.created_at, 'YYYY-MM-DD') AS created_at -- ❌ Removed extra comma here
+        TO_CHAR(w.created_at, 'YYYY-MM-DD') AS created_at,
+         w.total_responses
       FROM workers w
       LEFT JOIN users u ON w.user_id = u.id -- Fixed JOIN condition
-      GROUP BY w.full_name, w.project_title, w.role, w.created_at -- Fixed GROUP BY
+      GROUP BY w.full_name, w.project_title, w.role, w.created_at, w.total_responses -- Fixed GROUP BY
       ORDER BY w.created_at DESC;
     `;
 
     const { rows } = await pool.query(query);
+
     res.json(rows);
   } catch (err) {
     console.error(err);
@@ -463,32 +435,65 @@ app.get("/workers", async (req, res) => {
   }
 });
 
-// app.get("/project/:projectId", async (req, res) => {
-//   const { projectId } = req.params;
-//   const id = "531c145c-aab3-4781-97de-149c2f8feb25";
-//   console.log("something reach here", projectId);
-//   try {
-//     const project = await pool.query(
-//       "SELECT * FROM projects WHERE project_id = $1",
-//       [id]
-//     );
-//     if (project.rows.length === 0) {
-//       return res.status(404).json({ message: "Project not found" });
-//     }
-//     res.json(project.rows[0]);
-//     console.log("something reach here33", project.rows[0]);
-//   } catch (error) {
-//     res.status(500).json({ message: "Error fetching project" });
-//   }
-// });
+app.get("/responses", async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT r.response_id, r.responder, TO_CHAR(r.created_at, 'YYYY-MM-DD') AS created_at, p.title, u.name
+FROM responses r
+JOIN projects p ON r.project_id = p.project_id
+JOIN users u ON r.user_id = u.auth_id;
+`
+    );
+
+    res.json(result.rows); // Send all rows as JSON
+  } catch (err) {
+    console.error("Error fetching responses:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.get("/worker", async (req, res) => {
+  try {
+    const { userId, selectedProjectId } = req.query; // Use query params instead of body
+
+    if (!userId || !selectedProjectId) {
+      return res
+        .status(400)
+        .json({ error: "Missing required query parameters" });
+    }
+
+    // Fetch user ID from users table based on auth_id
+    const userResult = await pool.query(
+      "SELECT id FROM users WHERE auth_id = $1",
+      [userId]
+    );
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const userDbId = userResult.rows[0].id; // Extract user ID
+
+    // Fetch worker details
+    const result = await pool.query(
+      "SELECT * FROM workers WHERE user_id = $1 AND project_id = $2",
+      [userDbId, selectedProjectId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Worker not found" });
+    }
+
+    res.json(result.rows[0]); // Send the first row
+  } catch (err) {
+    console.error("Error fetching worker:", err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
 
 app.get("/project/:projectId", async (req, res) => {
   let { projectId } = req.params;
   projectId = projectId.replace(/^:/, "");
-
-  console.log("Fetching project with ID:", projectId);
-
-  console.log("Fetching project with ID:", projectId);
 
   const id = "fd5f9ac9-9f49-48f0-8c25-5d47714aeb72";
 
@@ -512,13 +517,87 @@ app.get("/project/:projectId", async (req, res) => {
 
     const projectData = project.rows[0];
 
-    // // Convert sections from JSONB to structured format (if necessary)
-    // if (projectData.sections) {
-    //   projectData.sections = JSON.parse(projectData.sections);
-    // }
-
     res.json(projectData);
-    console.log("Project fetched:", projectData);
+  } catch (error) {
+    console.error("Error fetching project:", error);
+    res.status(500).json({ message: "Error fetching project" });
+  }
+});
+
+app.get("/response/:responseId", async (req, res) => {
+  let { responseId } = req.params;
+  responseId = responseId.replace(/^:/, "");
+
+  try {
+    // Fetch the response including answers and user_id
+    const responseData = await pool.query(
+      `SELECT project_id, user_id, answers, created_at 
+       FROM responses 
+       WHERE response_id = $1`,
+      [responseId]
+    );
+
+    if (responseData.rows.length === 0) {
+      return res.status(404).json({ message: "Response not found" });
+    }
+
+    const { project_id, user_id, answers, created_at } = responseData.rows[0];
+
+    // Fetch worker's full name from users table
+    const userData = await pool.query(
+      `SELECT name 
+       FROM users 
+       WHERE auth_id = $1`,
+      [user_id]
+    );
+
+    const workerName =
+      userData.rows.length > 0 ? userData.rows[0].name : "Unknown";
+
+    // Fetch project details
+    const project = await pool.query(
+      `SELECT 
+        project_id, 
+        title, 
+        description, 
+        sponsor, 
+        co_investigator, 
+        sections
+      FROM projects 
+      WHERE project_id = $1`,
+      [project_id]
+    );
+
+    if (project.rows.length === 0) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    const projectData = project.rows[0];
+
+    // Attach answers to the corresponding sections/questions
+    if (projectData.sections) {
+      projectData.sections = projectData.sections.map((section) => ({
+        ...section,
+        questions: section.questions.map((question) => {
+          const foundAnswer = answers.find(
+            (ans) => ans.section_id === section.id
+          );
+          return {
+            ...question,
+            answer: foundAnswer ? foundAnswer.answer_value : null, // Assign answer if exists
+          };
+        }),
+      }));
+    }
+
+    // Construct response object
+    const responseObject = {
+      ...projectData,
+      worker_name: workerName,
+      created_at, // Add created_at timestamp
+    };
+
+    res.json(responseObject);
   } catch (error) {
     console.error("Error fetching project:", error);
     res.status(500).json({ message: "Error fetching project" });
@@ -528,17 +607,39 @@ app.get("/project/:projectId", async (req, res) => {
 app.post("/submit-survey", async (req, res) => {
   try {
     const { project_id, user_id, answers } = req.body;
-    console.log("Received survey data:", req.body);
 
     if (!project_id || !user_id || !answers || !Array.isArray(answers)) {
       return res.status(400).json({ error: "Missing required fields" });
     }
+
+    const response = await pool.query(
+      "SELECT name, email, id FROM users WHERE auth_id = $1",
+      [user_id]
+    );
+
+    // Ensure user exists
+    if (response.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const name = response.rows[0].name; // Extract name from response
+    const id = response.rows[0].id;
 
     // Insert into responses table
     const responseResult = await pool.query(
       `INSERT INTO responses (project_id, user_id, answers) 
        VALUES ($1, $2, $3) RETURNING response_id`,
       [project_id, user_id, JSON.stringify(answers)]
+    );
+
+    await pool.query(
+      "UPDATE projects SET total_responses = total_responses + 1 WHERE project_id = $1",
+      [project_id]
+    );
+
+    await pool.query(
+      "UPDATE workers SET total_responses = total_responses + 1 WHERE user_id = $1 AND project_id = $2",
+      [id, project_id]
     );
 
     const response_id = responseResult.rows[0].response_id;
@@ -573,8 +674,6 @@ app.post("/submit-survey", async (req, res) => {
 app.post("/become-worker", async (req, res) => {
   const { label, userId, selectedProject, selectedProjectId } = req.body;
 
-  console.log("something reached become-worker:", req.body);
-
   try {
     // Get user name from the database
     const response = await pool.query(
@@ -596,8 +695,14 @@ app.post("/become-worker", async (req, res) => {
       [name, selectedProject, id, selectedProjectId, label]
     );
 
+    await pool.query(
+      "UPDATE projects SET num_workers = num_workers + 1 WHERE project_id = $1",
+      [selectedProjectId]
+    );
+
     // Send an email
-    const email = "ugwuclement94@gmail.com";
+    // const email = "ugwuclement94@gmail.com";
+    const email = "goodnessezeanyika024@gmail.com";
     const subject = "New Worker";
     const text = `New Worker`;
     const html = `
@@ -621,14 +726,11 @@ app.post("/become-worker", async (req, res) => {
 
     transporter.verify((error, success) => {
       if (error) {
-        console.log("SMTP Connection Error:", error);
       } else {
-        console.log("SMTP Connected Successfully!");
       }
     });
 
     await transporter.sendMail(mailOptions);
-    console.log("Email was sent successfully!");
 
     return res.status(200).json({ message: "Worker added and email sent!" });
   } catch (error) {
@@ -638,7 +740,6 @@ app.post("/become-worker", async (req, res) => {
 });
 
 app.post("/delete-project", async (req, res) => {
-  console.log("we get reply");
   const { projectId } = req.body;
   try {
     await pool.query("DELETE FROM workers WHERE project_id = $1", [projectId]);
@@ -651,7 +752,6 @@ app.post("/delete-project", async (req, res) => {
     ]);
     await pool.query("DELETE FROM projects WHERE project_id = $1", [projectId]);
 
-    console.log("i don delete all ", projectId);
     res.status(200).json({ message: "Project deleted successfully" });
   } catch (error) {
     console.log(error);
