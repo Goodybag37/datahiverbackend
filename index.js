@@ -9,6 +9,7 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { createProxyMiddleware } from "http-proxy-middleware";
+import { createClient } from "@supabase/supabase-js";
 
 import cors from "cors";
 import path from "path";
@@ -35,6 +36,11 @@ app.use(
     saveUninitialized: true, // Session will be created if it does not exist
     cookie: { secure: false }, // Set to true if using HTTPS
   })
+);
+
+const supabase = createClient(
+  "https://awknyriesuodazutolaj.supabase.co",
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF3a255cmllc3VvZGF6dXRvbGFqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTczOTA1NDI1NiwiZXhwIjoyMDU0NjMwMjU2fQ.F3GeL-sa2Qovy5rXQzsft301uudGv6ijR1Wa66QiAVk" // Use service_role key here (only in backend)
 );
 app.set("trust proxy", 1); // trust first proxy
 // const pool = new pg.Pool({
@@ -435,6 +441,31 @@ app.get("/workers", async (req, res) => {
   }
 });
 
+app.get("/users", async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+      id,
+        name, 
+        email, 
+        role,
+        location, 
+        TO_CHAR(date, 'YYYY-MM-DD') AS created_at,
+        auth_id
+         
+      FROM users
+      
+    `;
+
+    const { rows } = await pool.query(query);
+
+    res.json(rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
 app.get("/responses", async (req, res) => {
   try {
     const result = await pool.query(
@@ -699,10 +730,11 @@ app.post("/become-worker", async (req, res) => {
       "UPDATE projects SET num_workers = num_workers + 1 WHERE project_id = $1",
       [selectedProjectId]
     );
+    await pool.query("UPDATE users SET role = worker  WHERE id = $1", [id]);
 
     // Send an email
-    // const email = "ugwuclement94@gmail.com";
-    const email = "goodnessezeanyika024@gmail.com";
+    const email = "ugwuclement94@gmail.com";
+
     const subject = "New Worker";
     const text = `New Worker`;
     const html = `
@@ -751,6 +783,78 @@ app.post("/delete-project", async (req, res) => {
       projectId,
     ]);
     await pool.query("DELETE FROM projects WHERE project_id = $1", [projectId]);
+
+    res.status(200).json({ message: "Project deleted successfully" });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+app.post("/delete-user", async (req, res) => {
+  const { userId } = req.body;
+  console.log("Received userId for deletion:", userId);
+
+  try {
+    // Delete user from Supabase Auth
+
+    // Fetch user ID from local DB
+    const response = await pool.query(
+      "SELECT id FROM users WHERE auth_id = $1",
+      [userId]
+    );
+
+    if (response.rows.length === 0) {
+      console.warn("⚠️ No matching user found in DB.");
+    }
+
+    const id = response.rows[0].id;
+    console.log("✅ User found in DB with ID:", id);
+
+    // Delete related records in order
+    await pool.query("DELETE FROM responses WHERE user_id = $1", [userId]);
+    console.log("✅ Deleted from responses");
+
+    await pool.query("DELETE FROM workers WHERE user_id = $1", [id]);
+    console.log("✅ Deleted from workers");
+
+    await pool.query("DELETE FROM users WHERE auth_id = $1", [userId]);
+    console.log("✅ Deleted from users table");
+
+    const { error } = await supabase.auth.admin.deleteUser(userId);
+    if (error) {
+      console.error("Supabase deleteUser error:", error.message);
+      return res.status(500).json({ error: error.message });
+    }
+    console.log("✅ User deleted from Supabase Auth");
+
+    res.status(200).json({ message: "User deleted successfully" });
+  } catch (error) {
+    console.error("❌ Error deleting user:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/delete-worker", async (req, res) => {
+  const { userId } = req.body;
+  try {
+    const response = await pool.query(
+      "SELECT id FROM users WHERE auth_id = $1",
+      [userId]
+    );
+    const id = response[0].id;
+
+    await pool.query("DELETE FROM workers WHERE user_id = $1", [id]);
+
+    res.status(200).json({ message: "Project deleted successfully" });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+app.post("/delete-response", async (req, res) => {
+  const { responseId } = req.body;
+  try {
+    await pool.query("DELETE FROM responses WHERE response_id = $1", [id]);
 
     res.status(200).json({ message: "Project deleted successfully" });
   } catch (error) {
