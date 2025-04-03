@@ -393,8 +393,59 @@ app.post("/projects", async (req, res) => {
   }
 });
 
+// app.get("/projects", async (req, res) => {
+
+//   const userId = req.query.userId
+
+//   try {
+
+//     if (userId) {
+
+//       const result = await pool.query("SELECT role FROM users WHERE auth_id = $1", [userId])
+
+// const query = `
+//       SELECT
+//         p.project_id,
+//         p.title,
+//         p.num_workers,
+//         p.total_responses,
+//         TO_CHAR(p.created_at, 'YYYY-MM-DD') AS created_at, -- Remove time
+//         COUNT(r.project_id) AS response_count -- Count responses per project
+//       FROM projects p
+//       LEFT JOIN responses r ON p.project_id = r.project_id
+//       GROUP BY p.project_id, p.title, p.num_workers, p.total_responses, p.created_at
+//       ORDER BY p.created_at DESC;
+//     `;
+
+// const { rows } = await pool.query(query);
+// res.json(rows);
+
+//     }
+
+//   } catch (err) {
+//     console.error(err);
+//     res.status(500).json({ error: "Internal Server Error" });
+//   }
+// });
+
 app.get("/projects", async (req, res) => {
+  const userId = req.query.userId;
+  console.log("user", userId);
+
   try {
+    let role = null;
+
+    if (userId) {
+      const result = await pool.query(
+        "SELECT role FROM users WHERE auth_id = $1",
+        [userId]
+      );
+
+      if (result.rows.length > 0) {
+        role = result.rows[0].role; // Extract the role properly
+      }
+    }
+
     const query = `
       SELECT 
         p.project_id, 
@@ -410,7 +461,11 @@ app.get("/projects", async (req, res) => {
     `;
 
     const { rows } = await pool.query(query);
-    res.json(rows);
+
+    res.json({
+      role: role || "guest", // Default role if user is not logged in
+      projects: rows,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -419,31 +474,81 @@ app.get("/projects", async (req, res) => {
 
 app.get("/workers", async (req, res) => {
   try {
-    const query = `
-      SELECT 
-        w.full_name, 
-        w.project_title, 
-        w.role, 
-        TO_CHAR(w.created_at, 'YYYY-MM-DD') AS created_at,
-         w.total_responses
-      FROM workers w
-      LEFT JOIN users u ON w.user_id = u.id -- Fixed JOIN condition
-      GROUP BY w.full_name, w.project_title, w.role, w.created_at, w.total_responses -- Fixed GROUP BY
-      ORDER BY w.created_at DESC;
-    `;
+    const userId = req.query.userId; // Extract userId correctly
 
-    const { rows } = await pool.query(query);
+    // Fetch user role and ID
+    const response = await pool.query(
+      "SELECT id, role FROM users WHERE auth_id = $1",
+      [userId]
+    );
 
+    if (response.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const { id, role } = response.rows[0];
+
+    let query;
+    let params = [];
+
+    if (role === "admin") {
+      query = `
+        SELECT
+          w.id, 
+          w.full_name, 
+          w.project_title, 
+          w.role, 
+          TO_CHAR(w.created_at, 'YYYY-MM-DD') AS created_at,
+          w.total_responses
+        FROM workers w
+        LEFT JOIN users u ON w.user_id = u.id 
+        GROUP BY w.id, w.full_name, w.project_title, w.role, w.created_at, w.total_responses 
+        ORDER BY w.created_at DESC;
+      `;
+    } else {
+      query = `
+        SELECT 
+        w.id,
+          w.full_name, 
+          w.project_title, 
+          w.role, 
+          TO_CHAR(w.created_at, 'YYYY-MM-DD') AS created_at,
+          w.total_responses 
+        FROM workers w
+        WHERE w.user_id = $1
+        ORDER BY w.created_at DESC;
+      `;
+      params = [id];
+    }
+
+    const { rows } = await pool.query(query, params);
     res.json(rows);
   } catch (err) {
-    console.error(err);
+    console.error("Error fetching workers:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
 
 app.get("/users", async (req, res) => {
+  const userId = req.query.userId; // Extract userId correctly
   try {
-    const query = `
+    // Fetch user role and ID
+    const response = await pool.query(
+      "SELECT id, role FROM users WHERE auth_id = $1",
+      [userId]
+    );
+
+    if (response.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    const { id, role } = response.rows[0];
+
+    let query;
+    let params = [];
+
+    if (role == "admin") {
+      query = `
       SELECT 
       id,
         name, 
@@ -456,10 +561,28 @@ app.get("/users", async (req, res) => {
       FROM users
       
     `;
+    } else {
+      query = `
+      SELECT 
+      id,
+        name, 
+        email, 
+        role,
+        location, 
+        TO_CHAR(date, 'YYYY-MM-DD') AS created_at,
+        auth_id
+         
+      FROM users WHERE auth_id = $1
+      
+    `;
+      params = [userId];
+    }
 
-    const { rows } = await pool.query(query);
-
-    res.json(rows);
+    const { rows } = await pool.query(query, params);
+    res.json({
+      role: role, // Default role if user is not logged in
+      rows: rows,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal Server Error" });
@@ -708,7 +831,7 @@ app.post("/become-worker", async (req, res) => {
   try {
     // Get user name from the database
     const response = await pool.query(
-      "SELECT name, email, id FROM users WHERE auth_id = $1",
+      "SELECT name, email, id, role FROM users WHERE auth_id = $1",
       [userId]
     );
 
@@ -719,6 +842,7 @@ app.post("/become-worker", async (req, res) => {
 
     const name = response.rows[0].name; // Extract name from response
     const id = response.rows[0].id;
+    const role = response.rows[0].role;
     // userEmail = response.rows[0].email;
     // Insert into workers table
     await pool.query(
@@ -730,7 +854,10 @@ app.post("/become-worker", async (req, res) => {
       "UPDATE projects SET num_workers = num_workers + 1 WHERE project_id = $1",
       [selectedProjectId]
     );
-    await pool.query("UPDATE users SET role = worker  WHERE id = $1", [id]);
+
+    if (role === "user") {
+      await pool.query("UPDATE users SET role = worker  WHERE id = $1", [id]);
+    }
 
     // Send an email
     const email = "ugwuclement94@gmail.com";
@@ -792,7 +919,6 @@ app.post("/delete-project", async (req, res) => {
 
 app.post("/delete-user", async (req, res) => {
   const { userId } = req.body;
-  console.log("Received userId for deletion:", userId);
 
   try {
     // Delete user from Supabase Auth
@@ -808,24 +934,19 @@ app.post("/delete-user", async (req, res) => {
     }
 
     const id = response.rows[0].id;
-    console.log("✅ User found in DB with ID:", id);
 
     // Delete related records in order
     await pool.query("DELETE FROM responses WHERE user_id = $1", [userId]);
-    console.log("✅ Deleted from responses");
 
     await pool.query("DELETE FROM workers WHERE user_id = $1", [id]);
-    console.log("✅ Deleted from workers");
 
     await pool.query("DELETE FROM users WHERE auth_id = $1", [userId]);
-    console.log("✅ Deleted from users table");
 
     const { error } = await supabase.auth.admin.deleteUser(userId);
     if (error) {
       console.error("Supabase deleteUser error:", error.message);
       return res.status(500).json({ error: error.message });
     }
-    console.log("✅ User deleted from Supabase Auth");
 
     res.status(200).json({ message: "User deleted successfully" });
   } catch (error) {
@@ -837,15 +958,42 @@ app.post("/delete-user", async (req, res) => {
 app.post("/delete-worker", async (req, res) => {
   const { userId } = req.body;
   try {
+    // const response = await pool.query(
+    //   "SELECT id FROM users WHERE auth_id = $1",
+    //   [userId]
+    // );
+    // const id = response[0].id;
+
     const response = await pool.query(
-      "SELECT id FROM users WHERE auth_id = $1",
+      "SELECT project_id from workers WHERE id = $1",
       [userId]
     );
-    const id = response[0].id;
 
-    await pool.query("DELETE FROM workers WHERE user_id = $1", [id]);
+    const projectId = response.rows[0]?.project_id;
+
+    await pool.query(
+      "UPDATE projects SET num_workers = num_workers - 1 WHERE project_id = $1",
+      [projectId]
+    );
+
+    await pool.query("DELETE FROM workers WHERE id = $1", [userId]);
 
     res.status(200).json({ message: "Project deleted successfully" });
+  } catch (error) {
+    console.log(error);
+  }
+});
+
+app.post("/change-role", async (req, res) => {
+  const { userId, newRole } = req.body;
+
+  try {
+    await pool.query("UPDATE users SET role = $1 WHERE id = $2", [
+      newRole, // role should be first
+      userId, // id should be second
+    ]);
+
+    res.status(200).json({ message: "role updated successfully" });
   } catch (error) {
     console.log(error);
   }
