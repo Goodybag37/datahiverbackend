@@ -592,7 +592,7 @@ app.get("/users", async (req, res) => {
 app.get("/responses", async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT r.response_id, r.responder, TO_CHAR(r.created_at, 'YYYY-MM-DD') AS created_at, p.title, u.name
+      `SELECT r.response_id, r.responder, TO_CHAR(r.created_at, 'YYYY-MM-DD') AS created_at, p.title, p.co_investigator, p.sponsor, p.description, u.name
 FROM responses r
 JOIN projects p ON r.project_id = p.project_id
 JOIN users u ON r.user_id = u.auth_id;
@@ -680,9 +680,11 @@ app.get("/project/:projectId", async (req, res) => {
 
 app.get("/response/:responseId", async (req, res) => {
   let { responseId } = req.params;
+
   responseId = responseId.replace(/^:/, "");
 
   try {
+    console.log("Route accessed with responseId:", req.params.responseId);
     // Fetch the response including answers and user_id
     const responseData = await pool.query(
       `SELECT project_id, user_id, answers, created_at 
@@ -734,8 +736,9 @@ app.get("/response/:responseId", async (req, res) => {
         ...section,
         questions: section.questions.map((question) => {
           const foundAnswer = answers.find(
-            (ans) => ans.section_id === section.id
+            (ans) => ans.section_id === section.id && ans.id === question.id
           );
+
           return {
             ...question,
             answer: foundAnswer ? foundAnswer.answer_value : null, // Assign answer if exists
